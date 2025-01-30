@@ -72,7 +72,7 @@ async function getComposers() {
         const workspaceData = JSON.parse(await fs.readFile(workspaceJsonPath, 'utf-8'))
         workspaceFolder = workspaceData.folder
       } catch (error) {
-        console.log(`No workspace.json found for ${entry.name}`)
+        // console.log(`No workspace.json found for ${entry}`)
       }
 
       const db = await open({
@@ -189,7 +189,7 @@ async function promptUser(
 }
 
 // Add function to get composer details
-async function getComposerDetails(dbPath: string, composerId: string) {
+async function getComposerDetails(dbPath: string, composerId: string, verbose = true) {
   // First get composer data from workspace db
   const db = await open({
     filename: dbPath,
@@ -207,8 +207,11 @@ async function getComposerDetails(dbPath: string, composerId: string) {
       // Get global storage path
       const workspacePath = path.dirname(path.dirname(dbPath))
       const globalDbPath = path.join(workspacePath, '..', 'globalStorage', 'state.vscdb')
-      console.log(`globalDbPath:${globalDbPath}`);
-      console.log(`cursorDiskKV key:composerData:${composerId}`);
+      
+      if (verbose) {
+        console.log(`globalDbPath:${globalDbPath}`)
+        console.log(`cursorDiskKV key:composerData:${composerId}`)
+      }
 
       if (existsSync(globalDbPath)) {
         const globalDb = await open({
@@ -286,10 +289,16 @@ function groupComposersByProject(
   return projectMap
 }
 
-// Add project selection prompt
+// Add helper to get current directory name
+function getCurrentDirectoryName(): string {
+  return path.basename(process.cwd())
+}
+
+// Update project selection logic
 async function promptProjectSelection(
   projects: Map<string, (ComposerChat & { workspaceId: string; workspaceFolder?: string })[]>,
-  rl: readline.Interface
+  rl: readline.Interface,
+  useDefaults: boolean
 ): Promise<(ComposerChat & { workspaceId: string; workspaceFolder?: string })[]> {
   // Create array of projects sorted by latest log
   const sortedProjects = Array.from(projects.entries())
@@ -299,35 +308,48 @@ async function promptProjectSelection(
     }))
     .sort((a, b) => b.latest - a.latest)
 
-  console.log('\nAvailable Projects:')
-  sortedProjects.forEach(({ project, latest }, index) => {
-    const date = new Date(latest).toLocaleString()
-    console.log(`${index + 1}. ${project} (last updated: ${date})`)
-  })
+  if (!useDefaults) {
+    console.log('\nAvailable Projects:')
+    sortedProjects.forEach(({ project, latest }, index) => {
+      const date = new Date(latest).toLocaleString()
+      console.log(`${index + 1}. ${project} (last updated: ${date})`)
+    })
+  }
 
   const getInput = async (question: string): Promise<string> => {
     return new Promise((resolve) => rl.question(question, resolve))
   }
 
-  // Auto-select if only one project
-  if (sortedProjects.length === 1) {
-    console.log(`\nAuto-selecting only project: ${sortedProjects[0].project}`)
-    return projects.get(sortedProjects[0].project)!
+  // Auto-select based on current directory or first project
+  const currentDirProject = getCurrentDirectoryName()
+  const defaultProjectIndex = sortedProjects.findIndex(p => p.project === currentDirProject)
+  const defaultSelection = defaultProjectIndex >= 0 ? defaultProjectIndex : 0
+
+  if (useDefaults) {
+    const selectedProject = sortedProjects[defaultSelection].project
+    return projects.get(selectedProject)!
+      .sort((a, b) => (b.lastUpdatedAt || b.createdAt) - (a.lastUpdatedAt || a.createdAt))
   }
 
-  let selectedIndex = 0
+  // Update prompt message
+  const promptMessage = defaultProjectIndex >= 0 
+    ? `\nSelect a project (1-${sortedProjects.length}) [default ${defaultSelection + 1} - ${currentDirProject}] or q to quit: `
+    : `\nSelect a project (1-${sortedProjects.length}) [default 1] or q to quit: `
+
+  let selectedIndex = 0; // Declare outside the loop
+
   while (true) {
-    const answer = await getInput(`\nSelect a project (1-${sortedProjects.length}) [default 1] or q to quit: `)
+    const answer = await getInput(promptMessage)
     if (answer.toLowerCase() === 'q') {
       rl.close()
       process.exit(0)
     }
     
-    // Default to first option if empty input
-    const input = answer.trim() || '1'
+    // Use default selection if empty input
+    const input = answer.trim() || String(defaultSelection + 1)
     const num = parseInt(input)
     if (num >= 1 && num <= sortedProjects.length) {
-      selectedIndex = num - 1
+      selectedIndex = num - 1 // Update the outer variable
       break
     }
     console.log('Invalid selection. Please enter a number between 1 and', sortedProjects.length)
@@ -338,13 +360,21 @@ async function promptProjectSelection(
     .sort((a, b) => (b.lastUpdatedAt || b.createdAt) - (a.lastUpdatedAt || a.createdAt))
 }
 
+// Update main function to handle --default flag
 async function main() {
   try {
+    // Parse command line arguments
+    const args = process.argv.slice(2)
+    const useDefaults = args.includes('--default')
+    const outputPathArg = args.find(arg => !arg.startsWith('--')) || '.composer-logs'
+
     // Get initial path from args or use default
-    const initialOutputPath = process.argv[2] || '.composer-logs'
+    const initialOutputPath = outputPathArg
     
-    // Prompt for output path confirmation
-    const outputPath = await promptOutputPath(initialOutputPath)
+    // Prompt for output path confirmation unless using defaults
+    const outputPath = useDefaults 
+      ? (await fs.mkdir(initialOutputPath, { recursive: true }), initialOutputPath)
+      : await promptOutputPath(initialOutputPath)
 
     const composers = await getComposers()
     const projectMap = groupComposersByProject(composers)
@@ -354,11 +384,15 @@ async function main() {
     })
 
     // First select project
-    const projectComposers = await promptProjectSelection(projectMap, rl)
-    
+    const projectComposers = useDefaults 
+      ? await promptProjectSelection(projectMap, rl, true)
+      : await promptProjectSelection(projectMap, rl, false)
+
     // Then select log from project
-    const { index: selectedIndex, filename } = await promptUser(projectComposers, rl)
-    
+    const { index: selectedIndex, filename } = useDefaults
+      ? { index: 0, filename: `${getProjectName(projectComposers[0])}_${formatTimestamp(new Date())}.md` }
+      : await promptUser(projectComposers, rl)
+
     const selected = projectComposers[selectedIndex]
     
     // Get detailed conversation data
@@ -367,9 +401,7 @@ async function main() {
       selected.workspaceId,
       'state.vscdb'
     )
-    const details = await getComposerDetails(dbPath, selected.composerId)
-
-    // console.log(details);
+    const details = await getComposerDetails(dbPath, selected.composerId, !useDefaults)
 
     // Merge the conversation data
     const markdown = convertChatToMarkdown({
@@ -389,7 +421,12 @@ async function main() {
 
     const fullPath = path.join(outputPath, filename)
     await fs.writeFile(fullPath, markdown)
-    console.log(`\nExported to: ${fullPath}`)
+
+    if (!useDefaults) {
+      console.log(`\nExported to: ${fullPath}`)
+    } else {
+      console.log(fullPath)
+    }
 
     // Close readline interface explicitly
     rl.close()
