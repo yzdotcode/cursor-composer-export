@@ -9,7 +9,7 @@ import { ComposerChat, ComposerData, ComposerMessage } from './types'
 import { convertChatToMarkdown } from './output'
 import readline from 'readline'
 import os from 'os'
-import { setupGitHook } from './git'
+import { setupGitHook, removeGitHook } from './git'
 
 
 async function getDefaultWorkspacePath(): Promise<string> {
@@ -123,16 +123,6 @@ function getLogSummary(composer: ComposerChat): string {
   return firstLine.length > 50 ? firstLine.substring(0, 47) + '...' : firstLine
 }
 
-// Add helper function to format timestamp
-function formatTimestamp(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const hour = String(date.getHours()).padStart(2, '0')
-  const minute = String(date.getMinutes()).padStart(2, '0')
-  return `${year}${month}${day}_${hour}${minute}`
-}
-
 async function promptUser(
   composers: (ComposerChat & { workspaceId: string; workspaceFolder?: string })[],
   rl: readline.Interface
@@ -168,8 +158,7 @@ async function promptUser(
   }
 
   const selected = composers[selectedIndex]
-  const timestamp = formatTimestamp(new Date(selected.lastUpdatedAt || selected.createdAt))
-  const defaultName = `${getProjectName(selected)}_${timestamp}`
+  const defaultName = `${getProjectName(selected)}_${selected.composerId.replace(/^composerData:/, '').split('-')[0]}`
   let filename: string
 
   while (true) {
@@ -368,10 +357,16 @@ async function main() {
   try {
     const args = process.argv.slice(2)
     
-    // Add new command for hook setup
+    // Handle install-hook command
     if (args[0] === 'install-hook') {
       const outputPath = args[1] || '.composer-logs'
       await setupGitHook(outputPath)
+      return
+    }
+
+    // Add uninstall-hook command handling
+    if (args[0] === 'uninstall-hook') {
+      await removeGitHook()
       return
     }
 
@@ -401,7 +396,10 @@ async function main() {
 
     // Then select log from project
     const { index: selectedIndex, filename } = useDefaults
-      ? { index: 0, filename: `${getProjectName(projectComposers[0])}_${formatTimestamp(new Date())}.md` }
+      ? { 
+          index: 0, 
+          filename: `${getProjectName(projectComposers[0])}_${projectComposers[0].composerId.replace(/^composerData:/, '').split('-')[0]}.md` 
+        }
       : await promptUser(projectComposers, rl)
 
     const selected = projectComposers[selectedIndex]

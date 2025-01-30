@@ -7,7 +7,7 @@ Reference code from [cursor-chat-browser](https://github.com/thomas-pedersen/cur
 ## Install
 
 ```bash
-npm install --save-dev cursor-composer-export
+npm install -g cursor-composer-export
 ```
 
 ## Usage
@@ -15,6 +15,7 @@ npm install --save-dev cursor-composer-export
 ```bash
 cursor-composer-export [output-path]
 ```
+Run the command in interactive mode to select the project and log file.
 
 ## Install Git Hook
 
@@ -23,8 +24,8 @@ cursor-composer-export install-hook
 ```
 
 This will:
-1. Create a pre-commit hook that runs the exporter
-2. Keep Husky's native management
+1. Create a pre-commit hook that runs the exporter and stages the latest composer log
+2. Keep Husky's native management(create/update script in .husky/pre-commit)
 
 ## Uninstall Git Hook
 

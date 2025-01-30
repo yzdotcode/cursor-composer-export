@@ -1,13 +1,14 @@
 {
   "name": "cursor-composer-export",
   "version": "1.0.0",
-  "description": "Export Cursor.ai chat history and integrate with Git commits",
+  "description": "Export Cursor project composer history and integrate with Git commits",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
     "dev": "ts-node src/index.ts",
     "dev:install-hook": "ts-node src/index.ts install-hook",
-    "dev:uninstall-hook": "ts-node src/index.ts uninstall-hook"
+    "dev:uninstall-hook": "ts-node src/index.ts uninstall-hook",
+    "uninstall-hook": "node dist/index.js uninstall-hook"
   },
   "keywords": [
     "cursor",
