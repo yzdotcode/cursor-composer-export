@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import path from 'path'
 import fs from 'fs/promises'
 import { existsSync } from 'fs'
@@ -7,6 +9,7 @@ import { ComposerChat, ComposerData, ComposerMessage } from './types'
 import { convertChatToMarkdown } from './output'
 import readline from 'readline'
 import os from 'os'
+import { setupGitHook } from './git'
 
 
 async function getDefaultWorkspacePath(): Promise<string> {
@@ -363,8 +366,16 @@ async function promptProjectSelection(
 // Update main function to handle --default flag
 async function main() {
   try {
-    // Parse command line arguments
     const args = process.argv.slice(2)
+    
+    // Add new command for hook setup
+    if (args[0] === 'install-hook') {
+      const outputPath = args[1] || '.composer-logs'
+      await setupGitHook(outputPath)
+      return
+    }
+
+    // Parse command line arguments
     const useDefaults = args.includes('--default')
     const outputPathArg = args.find(arg => !arg.startsWith('--')) || '.composer-logs'
 
