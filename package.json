@@ -8,7 +8,9 @@
     "dev": "ts-node src/index.ts",
     "dev:install-hook": "ts-node src/index.ts install-hook",
     "dev:uninstall-hook": "ts-node src/index.ts uninstall-hook",
-    "uninstall-hook": "node dist/index.js uninstall-hook"
+    "test:install-hook": "node dist/index.js install-hook",
+    "test:uninstall-hook": "node dist/index.js uninstall-hook",
+    "test": "npm run test:install-hook && npm run test:uninstall-hook"
   },
   "keywords": [
     "cursor",
